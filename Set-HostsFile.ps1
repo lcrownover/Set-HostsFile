@@ -1,43 +1,46 @@
 param(
     [Parameter(
         Mandatory=$true)]
-    [string]$Computer,
+    [string[]]$Computer,
     
     [Parameter(
         Mandatory=$true)]
-    [System.Collections.ArrayList]$Block
+    [string[]]$Block,
+
+    # [string[]]$Allow
 )
 
-$BlockEntries = New-Object -TypeName System.Collections.ArrayList #build list
-$BlockList = New-Object -TypeName System.Collections.ArrayList #used because i cant edit blockentries in place
-$TargetHostsFile = "\\$Computer\c$\Windows\drivers\etc\hosts"
-$BlockDict = @{
+$BlockList = New-Object System.Collections.ArrayList # list of sites to block
+$BlockExcludes = New-Object System.Collections.ArrayList # $blocklist sites already blocked
+$TargetHostsFile = "\\$Computer\c$\Windows\system32\drivers\etc\hosts"
+$SiteDict = @{
     "facebook" =    "127.0.0.1       www.facebook.com";
     "xfinity" =     "127.0.0.1       www.xfinity.com";
     "craigslist" =  "127.0.0.1       www.craigslist.org";
     "hbogo" =       "127.0.0.1       www.play.hbogo.com"
 }
 
-foreach ($site in $Block) {
-    if ($BlockDict.ContainsKey($site)) {
-        $BlockEntries.Add($BlockDict.Get_Item($site)) | out-null
-        $BlockList.Add($BlockDict.Get_Item($site)) | out-null
-    }
-}
-
-# foreach ($i in $BlockEntries) {
-#     write-output "debug: blockentries contains -->    $i"
-# } write-output ""
-
-
-if (Test-Path $TargetHostsFile) {
-    $HostsContent = Get-Content $TargetHostsFile
-    foreach ($i in $BlockEntries) {
-        if ($HostsContent | Select-String -Pattern "$i" ) {
-            $BlockList.Remove("$i")
-            # write-output "debug: found -->   $i   --removing from final list"
+foreach ($comp in $Computer) {
+    foreach ($site in $Block) {
+        if ($SiteDict.ContainsKey($site)) {
+            $BlockList.Add($SiteDict.Get_Item($site)) | out-null
         }
     }
-    # write-output $BlockList
-    Add-Content $TargetHostsFile -Value $BlockList
+
+    if (Test-Path $TargetHostsFile) {
+        $HostsContent = Get-Content $TargetHostsFile
+        foreach ($entry in $BlockList) {
+            if ($HostsContent | Select-String -Pattern "$entry" ) {
+                $BlockExcludes.Add("$entry") | out-null
+                Write-Debug -Message "Found entry -->   `"$entry`"   --Adding to Exclude List"
+            }
+        }
+        foreach ($entry in $BlockExcludes) {
+            $BlockList.Remove($entry)
+        }
+        Add-Content $TargetHostsFile -Value $BlockList
+    }
+    else {
+        Write-Error -Message "Hosts file not accessible on target: $Computer" -Category ObjectNotFound -ErrorAction Stop
+    }
 }
